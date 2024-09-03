@@ -38,10 +38,22 @@ Server::Server(int Port) : serverPort(Port)
 // Destructor for the Server class
 Server::~Server()
 {
+    // Join threads for all connected clients
+    for(auto& [socket, thread]: clientsMap)
+    {
+        if(pthread_join(thread, NULL) != 0)
+        {
+            std::cerr << "Failed to join thread.\n"; // Print error message if joining thread fails
+        }
+
+        close(socket);
+    }
+  
     if(pthread_join(messageQueueThread, NULL) != 0)
     {
         std::cerr << "Failed to join thread.\n"; // Print error message if joining thread fails
     }
+  
     close(serverSocket); // Closing the server socket when the Server object is destroyed
 }
 
@@ -126,8 +138,8 @@ void* Server::handleMessageQueue()
         pthread_mutex_lock(&mutex); // Lock mutex before accessing shared resources
         std::pair<int, std::string> clientMessagePair = messageQueue.front();
         messageQueue.pop();
-        std::cout << "Message from Client " << clientMessagePair.first << " : " << clientMessagePair.second;
         pthread_mutex_unlock(&mutex); // Unlock mutex after accessing shared resources
+        std::cout << "Message from Client " << clientMessagePair.first << " : " << clientMessagePair.second;
     }
 }
 
@@ -176,15 +188,6 @@ void Server::startListening()
             clientsMap[clientSocket] = thread; // Add client socket and thread to the map
         }
     }
-
-    // Join threads for all connected clients
-    for(auto& [socket, thread]: clientsMap)
-    {
-        if(pthread_join(thread, NULL) != 0)
-        {
-            std::cerr << "Failed to join thread.\n"; // Print error message if joining thread fails
-        }
-    }
 }
 
 // Function to handle a client connection
@@ -198,8 +201,8 @@ void* Server::handleClient(int clientSocket)
     {
         pthread_mutex_lock(&mutex); // Lock mutex before accessing shared resources
         messageQueue.push(std::make_pair(clientSocket, buffer)); // Push received data to the message queue
-        memset(buffer, 0, sizeof(buffer)); // Clear the buffer
         pthread_mutex_unlock(&mutex); // Unlock mutex after accessing shared resources
+        memset(buffer, 0, sizeof(buffer)); // Clear the buffer
     }
 
     if(bytesRead <= 0)
